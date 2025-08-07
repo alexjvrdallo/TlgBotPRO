@@ -67,25 +67,32 @@ async def bienvenida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nuevo in update.message.new_chat_members:
         await update.message.reply_text(f"🎉 ¡Bienvenido/a {nuevo.mention_html()}!", parse_mode="HTML")
 
-async def filtro_groserias(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.text and contains_bad_word(update.message.text):
+async def moderador(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
+    user = update.message.from_user
+    chat_id = update.message.chat_id
+    user_id = user.id
+    username = user.username or user.first_name
+    texto = update.message.text
+
+    if contains_bad_word(texto):
+        # Borrar mensaje
         try:
             await update.message.delete()
         except:
             pass
 
-async def advertencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-    user = update.message.from_user
-    chat_id = update.message.chat_id
-    user_id = user.id
-    username = user.username or user.first_name
-    if contains_bad_word(update.message.text):
+        # Contar advertencias
         warns.setdefault(chat_id, {}).setdefault(user_id, 0)
         warns[chat_id][user_id] += 1
         count = warns[chat_id][user_id]
-        await update.message.reply_text(f"⚠️ El @{username} tiene {count} advertencia(s).")
+
+        # Enviar advertencia al grupo
+        await context.bot.send_message(chat_id, f"⚠️ El @{username} tiene {count} advertencia(s).")
+
+        # Notificar a admins cada 2 advertencias
         if count % 2 == 0:
             admins = await context.bot.get_chat_administrators(chat_id)
             for admin in admins:
@@ -94,10 +101,23 @@ async def advertencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.send_message(admin.user.id, f"⚠️ El usuario @{username} ha recibido {count} advertencias.")
                     except Exception as e:
                         logger.warning(str(e))
+
+        # Silenciar al usuario cada 5 advertencias
         if count % 5 == 0:
-            until_date = datetime.utcnow() + timedelta(minutes=10)
+            until_date = datetime.utcnow() + timedelta(minutes=2)
             await context.bot.restrict_chat_member(chat_id, user_id, ChatPermissions(can_send_messages=False), until_date=until_date)
-            await context.bot.send_message(chat_id, f"🔇 @{username} ha sido silenciado por 10 minutos.")
+            await context.bot.send_message(chat_id, f"🔇 @{username} ha sido silenciado por 2 minutos.")
+
+    # Detección de cambio de nombre o username
+    old_username = usernames.get(user_id)
+    if old_username and old_username != user.username:
+        await update.message.reply_text(f"🔄 El usuario @{old_username} se cambió el nombre a @{user.username}")
+    usernames[user_id] = user.username
+
+    old_firstname = firstnames.get(user_id)
+    if old_firstname and old_firstname != user.first_name:
+        await update.message.reply_text(f"🔄 El usuario cambió su nombre de '{old_firstname}' a '{user.first_name}'")
+    firstnames[user_id] = user.first_name
 
 async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.chat_member.chat.id
@@ -118,8 +138,7 @@ def main():
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("staff", staff))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bienvenida))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filtro_groserias), 0)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, advertencias), 1)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, moderador))
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
     app.run_polling()
 
