@@ -47,25 +47,42 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admins = await context.bot.get_chat_administrators(chat.id)
     mensaje = f"🔔 El usuario @{update.effective_user.username or update.effective_user.first_name} ha solicitado ayuda en el grupo {chat.title}."
     for admin in admins:
-        try:
-            await context.bot.send_message(chat_id=admin.user.id, text=mensaje)
-        except:
-            pass
+        if admin.user.username:
+            try:
+                await context.bot.send_message(chat_id=admin.user.id, text=mensaje)
+            except:
+                pass
     await update.message.reply_text("✅ Hemos notificado a los administradores. Pronto te contactarán.")
 
 async def staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     admins = await context.bot.get_chat_administrators(chat.id)
     admin_list = "\n".join([
-        f"• {admin.user.first_name} (@{admin.user.username})"
-        if admin.user.username else f"• {admin.user.first_name}"
+        f"• @{admin.user.username}" if admin.user.username else f"• {admin.user.first_name}"
         for admin in admins
     ])
     await update.message.reply_text(f"<b>Administradores del grupo:</b>\n{admin_list}", parse_mode="HTML")
 
 async def bienvenida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nuevo in update.message.new_chat_members:
-        await update.message.reply_text(f"🎉 ¡Bienvenido/a {nuevo.mention_html()}!", parse_mode="HTML")
+        await update.message.reply_text(
+            "🎉 ¡Bienvenido/a al grupo TrustDelivery 🎉\n"
+            "Hola y gracias por unirte a nuestra comunidad. Estamos muy contentos de tenerte aquí. Antes de comenzar, por favor tómate un momento para leer nuestras reglas para mantener un ambiente respetuoso y productivo para todos:\n\n"
+            "📌 Reglas del grupo:\n"
+            "• Respeto ante todo: no se toleran insultos, lenguaje ofensivo ni discriminación.\n"
+            "• Nada de spam, promociones o enlaces sin autorización.\n"
+            "• Evita mensajes repetitivos, cadenas o contenido no relacionado.\n"
+            "• Las decisiones de los administradores son finales. Si tienes dudas, puedes contactarlos.\n\n"
+            "🔧 Usa el comando /reglas para ver las reglas en cualquier momento.\n"
+            "👮‍♂ Usa el comando /staff para ver la lista de administradores del grupo.\n\n"
+            "🚨 Este grupo cuenta con un sistema automático de advertencias:\n"
+            "1ª advertencia: recordatorio de las normas.\n"
+            "2ª advertencia: los administradores serán notificados.\n"
+            "3ª advertencia: silenciamiento temporal.\n\n"
+            "🤖 El bot detectará groserías, spam y comportamientos sospechosos.\n"
+            "Usuarios reincidentes que intenten reingresar con otro nombre serán detectados y notificados a los administradores.",
+            parse_mode="HTML"
+        )
 
 async def moderador(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -78,37 +95,31 @@ async def moderador(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
 
     if contains_bad_word(texto):
-        # Borrar mensaje
         try:
             await update.message.delete()
         except:
             pass
 
-        # Contar advertencias
         warns.setdefault(chat_id, {}).setdefault(user_id, 0)
         warns[chat_id][user_id] += 1
         count = warns[chat_id][user_id]
 
-        # Enviar advertencia al grupo
         await context.bot.send_message(chat_id, f"⚠️ El @{username} tiene {count} advertencia(s).")
 
-        # Notificar a admins cada 2 advertencias
         if count % 2 == 0:
             admins = await context.bot.get_chat_administrators(chat_id)
             for admin in admins:
-                if not admin.user.is_bot:
+                if admin.user.username:
                     try:
                         await context.bot.send_message(admin.user.id, f"⚠️ El usuario @{username} ha recibido {count} advertencias.")
                     except Exception as e:
                         logger.warning(str(e))
 
-        # Silenciar al usuario cada 5 advertencias
         if count % 5 == 0:
             until_date = datetime.utcnow() + timedelta(minutes=2)
             await context.bot.restrict_chat_member(chat_id, user_id, ChatPermissions(can_send_messages=False), until_date=until_date)
             await context.bot.send_message(chat_id, f"🔇 @{username} ha sido silenciado por 2 minutos.")
 
-    # Detección de cambio de nombre o username
     old_username = usernames.get(user_id)
     if old_username and old_username != user.username:
         await update.message.reply_text(f"🔄 El usuario @{old_username} se cambió el nombre a @{user.username}")
@@ -125,7 +136,7 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.old_chat_member.status in ["left", "kicked"] and update.chat_member.new_chat_member.status == "member":
         admins = await context.bot.get_chat_administrators(chat_id)
         for admin in admins:
-            if not admin.user.is_bot:
+            if admin.user.username:
                 try:
                     await context.bot.send_message(admin.user.id, f"🚪 El usuario @{user.username or user.first_name} ha vuelto al grupo.")
                 except Exception as e:
